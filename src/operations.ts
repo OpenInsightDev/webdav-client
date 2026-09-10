@@ -40,6 +40,7 @@ import {
   XmlEncodeError,
   StreamError,
   AuthenticationError,
+  UnsupportedFeatureError,
 } from "#/error.ts";
 import { Transport, type WebDavHttpResponse } from "#/transport.ts";
 import { DavXmlCodecLive, type XmlParseOptions } from "#/xml.ts";
@@ -237,7 +238,8 @@ export type OperationError =
   | StreamError
   | TransportError
   | AbortError
-  | AuthenticationError;
+  | AuthenticationError
+  | UnsupportedFeatureError;
 
 export type OperationRequirements = Auth | Transport;
 
@@ -540,8 +542,57 @@ const makeLive = (config: NormalizedWebDavConfig) => {
           : statusOk(response, "putFileContents", new Set([200, 201, 204])).pipe(Effect.as(true)),
       ),
     );
-  const partialUpdate = (path: string, data: UploadData, options: PartialUpdateInput = {}) =>
-    putFileContents(path, data, { ...options, overwrite: true });
+  const partialUpdate = (
+    path: string,
+    data: UploadData,
+    options: PartialUpdateInput = {},
+  ): Effect.Effect<boolean, OperationError, OperationRequirements> => {
+    const range = options.range;
+
+    // If no range is specified, fall back to PUT (full file replacement)
+    if (!range) {
+      return putFileContents(path, data, { ...options, overwrite: true });
+    }
+
+    // Use PATCH for partial updates with range
+    const contentType = options.contentType ?? "application/octet-stream";
+
+    return uploadBytes(data).pipe(
+      Effect.flatMap((uploadData) => {
+        // Calculate the end position from the data length if not provided
+        const dataLength = uploadData.byteLength;
+        const rangeEnd = range.end !== undefined ? range.end : range.start + dataLength - 1;
+        const rangeHeader = `bytes ${range.start}-${rangeEnd}/*`;
+
+        return execute({
+          url: pathUrl(config, path),
+          method: "PATCH",
+          ...requestOptions(config, options),
+          data: uploadData,
+          headers: {
+            "Content-Type": contentType,
+            "Content-Range": rangeHeader,
+            ...options.headers,
+          },
+        });
+      }),
+      Effect.flatMap((response): Effect.Effect<boolean, OperationError, OperationRequirements> => {
+        if (response.status === 409) {
+          return Effect.fail(
+            new UnsupportedFeatureError({
+              operation: "partialUpdateFileContents",
+              message: "Server does not support PATCH or partial updates (409 Conflict)",
+              status: 409,
+              url: pathUrl(config, path),
+            }),
+          );
+        }
+        return statusOk(response, "partialUpdateFileContents", new Set([200, 204, 206])).pipe(
+          Effect.as(true),
+        );
+      }),
+    );
+  };
   const createReadStream = (path: string, options: CreateReadStreamInput = {}) => {
     const range = options.range;
     const headers = range
