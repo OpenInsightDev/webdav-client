@@ -48,7 +48,7 @@ describe("RFC 5789 PATCH support", () => {
     }).pipe(Effect.provide(layer));
   });
 
-  it.effect("handles open-ended ranges with asterisk", () => {
+  it.effect("calculates end position from data length when end not provided", () => {
     const requests: Array<{ headers?: Record<string, string> }> = [];
     const layer = makeLayer((request) => {
       requests.push(request);
@@ -58,12 +58,14 @@ describe("RFC 5789 PATCH support", () => {
     return Effect.gen(function* () {
       const partial = yield* PartialUpdateFileContents;
 
-      // Range without end means "from start to end of data"
-      yield* partial.execute("/file.txt", "append this", {
+      // Range without end calculates end from data length
+      const data = "append this"; // 11 bytes
+      yield* partial.execute("/file.txt", data, {
         range: { start: 100 },
       });
 
-      expect(requests[0]?.headers?.["Content-Range"]).toBe("bytes 100-*/*");
+      // start=100, length=11, so end=100+11-1=110
+      expect(requests[0]?.headers?.["Content-Range"]).toBe("bytes 100-110/*");
     }).pipe(Effect.provide(layer));
   });
 

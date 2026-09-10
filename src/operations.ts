@@ -556,12 +556,15 @@ const makeLive = (config: NormalizedWebDavConfig) => {
 
     // Use PATCH for partial updates with range
     const contentType = options.contentType ?? "application/octet-stream";
-    const rangeEnd = range.end !== undefined ? String(range.end) : "*";
-    const rangeHeader = `bytes ${range.start}-${rangeEnd}/*`;
 
     return uploadBytes(data).pipe(
-      Effect.flatMap((uploadData) =>
-        execute({
+      Effect.flatMap((uploadData) => {
+        // Calculate the end position from the data length if not provided
+        const dataLength = uploadData.byteLength;
+        const rangeEnd = range.end !== undefined ? range.end : range.start + dataLength - 1;
+        const rangeHeader = `bytes ${range.start}-${rangeEnd}/*`;
+
+        return execute({
           url: pathUrl(config, path),
           method: "PATCH",
           ...requestOptions(config, options),
@@ -571,8 +574,8 @@ const makeLive = (config: NormalizedWebDavConfig) => {
             "Content-Range": rangeHeader,
             ...options.headers,
           },
-        }),
-      ),
+        });
+      }),
       Effect.flatMap((response): Effect.Effect<boolean, OperationError, OperationRequirements> => {
         if (response.status === 409) {
           return Effect.fail(

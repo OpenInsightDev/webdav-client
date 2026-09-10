@@ -604,7 +604,7 @@ yield* client.partialUpdateFileContents("/log.txt", chunk);
 
 **Options:**
 
-- `range?: { start: number; end?: number }` - Byte range to update. If `end` is omitted, updates from `start` to end of provided data
+- `range?: { start: number; end?: number }` - Byte range to update. If `end` is omitted, it's calculated as `start + dataLength - 1`
 - `contentType?: string` - Content type of the patch data (default: `"application/octet-stream"`)
 - `headers?: Headers` - Additional HTTP headers
 - `signal?: AbortSignal` - Abort signal for cancellation
