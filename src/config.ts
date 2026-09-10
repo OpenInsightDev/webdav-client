@@ -114,7 +114,11 @@ export const PutFileContentsOptions = Schema.Struct({
   contentLength: Schema.optional(Schema.Union([Schema.Boolean, Schema.Number])),
   overwrite: Schema.optional(Schema.Boolean),
 });
-export const PartialUpdateOptions = MethodOptions;
+export const PartialUpdateOptions = Schema.Struct({
+  ...methodOptionFields,
+  range: Schema.optional(Range),
+  contentType: Schema.optional(Schema.String),
+});
 
 export const RequestOptions = Schema.Struct({
   url: Url,

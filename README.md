@@ -569,19 +569,52 @@ yield* client.moveFile("/a", "/b", { overwrite: false });
 
 #### partialUpdateFileContents
 
-> **Warning — not production-safe yet.** This operation currently ignores byte ranges and replaces the entire remote file.
-> Passing a partial payload can silently destroy data.
-> Do not use it until true partial updates are implemented.
+Partially update a file using the HTTP PATCH method (RFC 5789).
+
+**With byte range (uses PATCH):**
 
 ```ts
+// Update bytes 10-20 of the file
+yield* client.partialUpdateFileContents("/file.txt", "new content", {
+  range: { start: 10, end: 20 }
+});
+
+// Append from position 100 onwards
+yield* client.partialUpdateFileContents("/file.txt", "appended data", {
+  range: { start: 100 }
+});
+
+// With custom content type
+yield* client.partialUpdateFileContents("/data.json", '{"key":"value"}', {
+  range: { start: 0, end: 14 },
+  contentType: "application/json"
+});
+```
+
+**Without range (falls back to PUT):**
+
+```ts
+// Replaces entire file
 yield* client.partialUpdateFileContents("/log.txt", chunk);
 ```
 
 ```ts
-(path: string, data: UploadData, options?: MethodOptions) => Effect<boolean, OperationError>;
+(path: string, data: UploadData, options?: PartialUpdateOptions) => Effect<boolean, OperationError>;
 ```
 
-The signature is `(path, data, options)`; it does not take start or end positions.
+**Options:**
+
+- `range?: { start: number; end?: number }` - Byte range to update. If `end` is omitted, updates from `start` to end of provided data
+- `contentType?: string` - Content type of the patch data (default: `"application/octet-stream"`)
+- `headers?: Headers` - Additional HTTP headers
+- `signal?: AbortSignal` - Abort signal for cancellation
+
+**Error handling:**
+
+- Returns `UnsupportedFeatureError` if the server responds with 409 Conflict (PATCH not supported)
+- Accepts 200, 204, or 206 status codes as success
+
+**Note:** Without a `range`, this operation falls back to a full PUT request and replaces the entire file.
 
 #### putFileContents
 
